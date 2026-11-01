@@ -1,0 +1,197 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BookingStatus {
+  PENDING_VERIFICATION
+  CONFIRMED
+  COMPLETED
+  EXPIRED
+  CANCELLED_BY_CLIENT
+  CANCELLED_BY_STUDIO
+  NO_SHOW
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+enum DiscountScope {
+  ALL_SERVICES
+  SELECTED_SERVICES
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  STAFF
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  phone     String?
+  notes     String?
+  noShows   Int      @default(0)
+  blocked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  bookings  Booking[]
+}
+
+model Service {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  name        String
+  description String
+  imageUrl    String?
+  bufferMins  Int           @default(10)
+  active      Boolean       @default(true)
+  sortOrder   Int           @default(0)
+  prices      ServicePrice[]
+  bookings    Booking[]
+  discounts   DiscountService[]
+}
+
+model ServicePrice {
+  id          String  @id @default(cuid())
+  serviceId   String
+  durationMin Int
+  pricePence  Int
+  service     Service @relation(fields: [serviceId], references: [id])
+
+  @@unique([serviceId, durationMin])
+}
+
+model Therapist {
+  id       String        @id @default(cuid())
+  name     String
+  bio      String?
+  photoUrl String?
+  active   Boolean       @default(true)
+  hours    WorkingHours[]
+  timeOff  TimeOff[]
+  bookings Booking[]
+}
+
+model WorkingHours {
+  id          String    @id @default(cuid())
+  therapistId String
+  weekday     Int
+  startTime   String
+  endTime     String
+  therapist   Therapist @relation(fields: [therapistId], references: [id])
+}
+
+model TimeOff {
+  id          String    @id @default(cuid())
+  therapistId String?
+  startsAt    DateTime
+  endsAt      DateTime
+  reason      String?
+  therapist   Therapist? @relation(fields: [therapistId], references: [id])
+}
+
+model Booking {
+  id             String        @id @default(cuid())
+  reference      String        @unique
+  clientId       String
+  serviceId      String
+  therapistId    String
+  startsAt       DateTime
+  endsAt         DateTime
+  durationMin    Int
+  pricePence     Int
+  discountPence  Int           @default(0)
+  discountId     String?
+  status         BookingStatus @default(PENDING_VERIFICATION)
+  holdExpiresAt  DateTime?
+  healthForm     Json?
+  consentAt      DateTime?
+  idempotencyKey String?       @unique
+  createdAt      DateTime      @default(now())
+  cancelledAt    DateTime?
+  client         Client        @relation(fields: [clientId], references: [id])
+  service        Service       @relation(fields: [serviceId], references: [id])
+  therapist      Therapist     @relation(fields: [therapistId], references: [id])
+  tokens         BookingToken[]
+
+  @@index([therapistId, startsAt])
+  @@index([status, holdExpiresAt])
+}
+
+model BookingToken {
+  id        String    @id @default(cuid())
+  bookingId String
+  tokenHash String    @unique
+  codeHash  String?
+  purpose   String
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  booking   Booking   @relation(fields: [bookingId], references: [id])
+}
+
+model Discount {
+  id          String          @id @default(cuid())
+  name        String
+  type        DiscountType
+  value       Int
+  scope       DiscountScope   @default(ALL_SERVICES)
+  code        String?         @unique
+  startsAt    DateTime
+  endsAt      DateTime
+  showInHero  Boolean         @default(true)
+  active      Boolean         @default(true)
+  services    DiscountService[]
+}
+
+model DiscountService {
+  discountId String
+  serviceId  String
+  discount   Discount @relation(fields: [discountId], references: [id])
+  service    Service  @relation(fields: [serviceId], references: [id])
+
+  @@id([discountId, serviceId])
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(ADMIN)
+  totpSecret   String?
+  twoFaEnabled Boolean  @default(false)
+  createdAt    DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value Json
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  type      String
+  bookingId String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String?
+  meta      Json?
+  ip        String?
+  createdAt DateTime @default(now())
+}
